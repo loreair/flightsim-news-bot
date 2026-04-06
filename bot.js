@@ -1,29 +1,33 @@
-const cheerio = require('cheerio');
 const axios = require('axios');
-const https = require('https');
+const cheerio = require('cheerio');
 
 const token = process.env.TELEGRAM_TOKEN;
 const chatId = process.env.TELEGRAM_CHAT_ID;
 
 async function sendTelegram(msg) {
-  const url = `https://api.telegram.org/bot${token}/sendMessage`;
-  await axios.post(url, {chat_id: chatId, text: msg, parse_mode: 'HTML'});
+  await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
+    chat_id: chatId, 
+    text: msg, 
+    parse_mode: 'HTML'
+  });
 }
 
-async function scrapeNews(url, selector) {
-  const {data} = await axios.get(url);
-  const $ = cheerio.load(data);
-  return $(selector).first().text().trim();
-}
-
-async function main() {
+async function getNews() {
   try {
-    const news = await scrapeNews('https://flightsim.to/', '.news-item-title');
-    await sendTelegram(`📰 <b>FlightSim News</b>\n\n${news}`);
-    console.log('✅ News inviate!');
+    const {data} = await axios.get('https://flightsim.news/');
+    const $ = cheerio.load(data);
+    const title = $('.latest-news h3 a').first().text().trim();
+    const link = 'https://flightsim.news' + $('.latest-news h3 a').first().attr('href');
+    return `${title}\n\n👉 ${link}`;
   } catch(e) {
-    console.error('❌ Errore:', e.message);
+    return '📰 Nessuna news trovata oggi';
   }
 }
 
-main();
+async function main() {
+  const news = await getNews();
+  await sendTelegram(`✈️ <b>FlightSim News Bot</b>\n\n${news}`);
+  console.log('✅ Messaggio Telegram inviato!');
+}
+
+main().catch(console.error);

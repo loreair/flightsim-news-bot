@@ -1,0 +1,32 @@
+workflow = """name: FlightSim News Bot
+
+on:
+  schedule:
+    - cron: '30 6 * * *'  # Alle 6:30 ogni giorno (CEST)
+  workflow_dispatch:        # Pulsante manuale per test
+
+jobs:
+  send-news:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+    
+    - name: Install dependencies
+      run: npm init -y && npm install node-fetch cheerio
+    
+    - name: Run news bot
+      env:
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: node bot.js"""
+
+with open('/home/user/news-bot-workflow.yml', 'w') as f:
+    f.write(workflow)
+print('File creato con ' + str(len(workflow.splitlines())) + ' righe')
+print(workflow)

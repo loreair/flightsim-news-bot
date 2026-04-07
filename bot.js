@@ -1,33 +1,26 @@
-const axios = require('axios');
-const cheerio = require('cheerio');
+name: FlightSim News Bot
 
-const token = process.env.TELEGRAM_TOKEN;
-const chatId = process.env.TELEGRAM_CHAT_ID;
+on:
+  schedule:
+    - cron: '30 5 * * *'  # 6:30 ora italiana (inverno/CET) | estate diventa 7:30, cambia in '30 4 * * *'
+  workflow_dispatch:
 
-async function sendTelegram(msg) {
-  await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
-    chat_id: chatId, 
-    text: msg, 
-    parse_mode: 'HTML'
-  });
-}
-
-async function getNews() {
-  try {
-    const {data} = await axios.get('https://flightsim.news/');
-    const $ = cheerio.load(data);
-    const title = $('.latest-news h3 a').first().text().trim();
-    const link = 'https://flightsim.news' + $('.latest-news h3 a').first().attr('href');
-    return `${title}\n\n👉 ${link}`;
-  } catch(e) {
-    return '📰 Nessuna news trovata oggi';
-  }
-}
-
-async function main() {
-  const news = await getNews();
-  await sendTelegram(`✈️ <b>FlightSim News Bot</b>\n\n${news}`);
-  console.log('✅ Messaggio Telegram inviato!');
-}
-
-main().catch(console.error);
+jobs:
+  send-news:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js 24
+      uses: actions/setup-node@v4
+      with:
+        node-version: '24'
+        
+    - name: Install dependencies
+      run: npm install cheerio axios
+      
+    - name: Run bot
+      env:
+        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: node bot.js

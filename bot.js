@@ -1,26 +1,75 @@
-name: FlightSim News Bot
+const axios = require('axios');
 
-on:
-  schedule:
-    - cron: '30 5 * * *'  # 6:30 ora italiana (inverno/CET) | estate diventa 7:30, cambia in '30 4 * * *'
-  workflow_dispatch:
+const cheerio = require('cheerio');
 
-jobs:
-  send-news:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Setup Node.js 24
-      uses: actions/setup-node@v4
-      with:
-        node-version: '24'
-        
-    - name: Install dependencies
-      run: npm install cheerio axios
-      
-    - name: Run bot
-      env:
-        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      run: node bot.js
+const token = process.env.TELEGRAM_TOKEN;
+const chatId = process.env.TELEGRAM_CHAT_ID;
+
+if (!token || !chatId) {
+  console.error('❌ TELEGRAM_TOKEN o TELEGRAM_CHAT_ID mancanti!');
+  process.exit(1);
+}
+
+async function sendTelegram(msg) {
+  await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
+    chat_id: chatId,
+    text: msg,
+    parse_mode: 'HTML',
+    disable_web_page_preview: false
+  });
+}
+
+async function getNews() {
+  try {
+    const { data } = await axios.get('https://flightsim.news/', {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FlightSimNewsBot/1.0)' }
+    });
+    const $ = cheerio.load(data);
+
+    const articles = [];
+
+    // I link degli articoli hanno il pattern /NUM/slug (es: /644/titolo-articolo)
+    $('a[href]').each((i, el) => {
+      const href = $(el).attr('href');
+      const title = $(el).text().trim();
+      if (
+        href &&
+        title &&
+        title.length > 10 &&
+        /^https?:\/\/(?:www\.)?flightsim\.news\/\d+\//.test(href) &&
+        !articles.find(a => a.link === href)
+      ) {
+        articles.push({ title, link: href });
+      }
+      if (articles.length >= 5) return false; // stop dopo 5
+    });
+
+    if (articles.length === 0) return '📰 Nessuna news trovata oggi';
+
+    return articles
+      .map((a, i) => `${i + 1}. <b>${a.title}</b>\n👉 ${a.link}`)
+      .join('\n\n');
+
+  } catch (e) {
+    console.error('Errore scraping:', e.message);
+    return '⚠️ Errore nel recupero delle notizie';
+  }
+}
+
+async function main() {
+  const news = await getNews();
+  const date = new Date().toLocaleDateString('it-IT', {
+    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
+    timeZone: 'Europe/Rome'
+  });
+
+  await sendTelegram(
+    `✈️ <b>FlightSim News – ${date}</b>\n\n${news}`
+  );
+  console.log('✅ Messaggio Telegram inviato!');
+}
+
+main().catch(err => {
+  console.error('❌ Errore:', err.message);
+  process.exit(1);
+});

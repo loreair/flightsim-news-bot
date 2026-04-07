@@ -2,7 +2,7 @@ name: FlightSim News Bot
 
 on:
   schedule:
-    - cron: '30 6 * * *'
+    - cron: '30 5 * * *'  # 6:30 ora italiana (inverno/CET) | estate diventa 7:30, cambia in '30 4 * * *'
   workflow_dispatch:
 
 jobs:
@@ -23,4 +23,5 @@ jobs:
       env:
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       run: node bot.js

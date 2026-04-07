@@ -11,12 +11,28 @@ if (!token || !chatId) {
 }
 
 async function sendTelegram(msg) {
-  await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
-    chat_id: chatId,
-    text: msg,
-    parse_mode: 'HTML',
-    disable_web_page_preview: false
-  });
+  try {
+    // Verifica che il token sia valido
+    const me = await axios.get(`https://api.telegram.org/bot${token}/getMe`);
+    console.log('✅ Bot valido:', me.data.result.username);
+  } catch (e) {
+    console.error('❌ TELEGRAM_TOKEN non valido:', e.response?.data || e.message);
+    process.exit(1);
+  }
+
+  try {
+    await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
+      chat_id: chatId,
+      text: msg,
+      parse_mode: 'HTML',
+      disable_web_page_preview: false
+    });
+  } catch (e) {
+    console.error('❌ Errore sendMessage:', e.response?.data || e.message);
+    console.error(`   Token usato: ${token.substring(0, 10)}...`);
+    console.error(`   Chat ID usato: ${chatId}`);
+    process.exit(1);
+  }
 }
 
 async function getNews() {

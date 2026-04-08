@@ -60,7 +60,7 @@ async function getNews() {
       if (articles.length >= 5) return false; // stop dopo 5
     });
 
-    if (articles.length === 0) return '📰 Nessuna news trovata oggi';
+    if (articles.length === 0) return '📰 Buongiorno piloti, purtroppo il Bot non ha trovato nessuna news oggi';
 
     return articles
       .map((a, i) => `${i + 1}. <b>${a.title}</b>\n👉 ${a.link}`)

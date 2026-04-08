@@ -80,7 +80,7 @@ async function main() {
   });
 
   await sendTelegram(
-    `✈️ <b>FlightSim News – ${date}</b>\n\n${news}`
+    `✈️ <b>FlightSim News By LOREAIR – ${date}</b>\n\n${news}`
   );
   console.log('✅ Messaggio Telegram inviato!');
 }

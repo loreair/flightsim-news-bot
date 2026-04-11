@@ -5,6 +5,9 @@ on:
     - cron: '30 3 * * *'  # 6:30 ora italiana (inverno/CET) | estate diventa 7:30, cambia in '30 4 * * *'
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   send-news:
     runs-on: ubuntu-latest

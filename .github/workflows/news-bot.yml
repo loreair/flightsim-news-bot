@@ -17,7 +17,7 @@ jobs:
         node-version: '24'
         
     - name: Install dependencies
-      run: npm install cheerio axios rss-parser
+      run: npm install cheerio axios rss-parser @anthropic-ai/sdk
       
     - name: Run bot
       env:

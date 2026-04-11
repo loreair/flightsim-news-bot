@@ -44,7 +44,7 @@ async function getNews() {
 
     const articles = [];
 
-    // I link degli articoli hanno il pattern /NUM/slug (es: /644/titolo-articolo)
+    // I link degli articoli hanno il pattern /slug/ (es: /titolo-articolo/)
     $('a[href]').each((i, el) => {
       const href = $(el).attr('href');
       const title = $(el).text().trim();
@@ -52,7 +52,7 @@ async function getNews() {
         href &&
         title &&
         title.length > 10 &&
-        /^https?:\/\/(?:www\.)?flightsim\.news\/\d+\//.test(href) &&
+        /^https?:\/\/(?:www\.)?flightsim\.news\/[a-z0-9-]+\/?$/.test(href) &&
         !articles.find(a => a.link === href)
       ) {
         articles.push({ title, link: href });

@@ -1,8 +1,10 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
+const RSSParser = require('rss-parser');
 
 const token = process.env.TELEGRAM_TOKEN;
 const chatId = process.env.TELEGRAM_CHAT_ID;
+const parser = new RSSParser();
 
 if (!token || !chatId) {
   console.error('❌ TELEGRAM_TOKEN o TELEGRAM_CHAT_ID mancanti!');
@@ -17,7 +19,6 @@ async function sendTelegram(msg) {
     console.error('❌ TELEGRAM_TOKEN non valido:', e.response?.data || e.message);
     process.exit(1);
   }
-
   try {
     await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
       chat_id: chatId,
@@ -31,36 +32,43 @@ async function sendTelegram(msg) {
   }
 }
 
+// --- Fonti RSS ---
+
+async function getRssFeed(url, sourceName, limit = 3) {
+  try {
+    const feed = await parser.parseURL(url);
+    return feed.items.slice(0, limit).map(item => ({
+      source: sourceName,
+      title: item.title?.trim() || '(senza titolo)',
+      link: item.link?.trim() || ''
+    })).filter(a => a.link);
+  } catch (e) {
+    console.error(`Errore RSS ${sourceName}:`, e.message);
+    return [];
+  }
+}
+
+// --- Fonte scraping: flightsim.news (nessun RSS disponibile) ---
+
 async function getFlightSimNews() {
   try {
     const { data } = await axios.get('https://flightsim.news/', {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FlightSimNewsBot/1.0)' }
     });
-
     const $ = cheerio.load(data);
     const articles = [];
-
     $('a[href]').each((i, el) => {
       const href = $(el).attr('href');
       const title = $(el).text().trim();
-
       if (
-        href &&
-        title &&
-        title.length > 10 &&
+        href && title && title.length > 10 &&
         /^https?:\/\/(?:www\.)?flightsim\.news\/[a-z0-9-]+\/?$/.test(href) &&
         !articles.find(a => a.link === href)
       ) {
-        articles.push({
-          source: 'FlightSim News',
-          title,
-          link: href
-        });
+        articles.push({ source: 'FlightSim News', title, link: href });
       }
-
-      if (articles.length >= 5) return false;
+      if (articles.length >= 3) return false;
     });
-
     return articles;
   } catch (e) {
     console.error('Errore FlightSim News:', e.message);
@@ -68,43 +76,30 @@ async function getFlightSimNews() {
   }
 }
 
+// --- Fonte scraping: DCS Official (nessun RSS pubblico) ---
+
 async function getDcsNews() {
   try {
     const { data } = await axios.get('https://www.digitalcombatsimulator.com/en/news/', {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FlightSimNewsBot/1.0)' }
     });
-
     const $ = cheerio.load(data);
     const articles = [];
-
     $('a[href]').each((i, el) => {
       const href = $(el).attr('href');
       const title = $(el).text().trim();
-
-      const fullUrl =
-        href && href.startsWith('/')
-          ? `https://www.digitalcombatsimulator.com${href}`
-          : href;
-
+      const fullUrl = href && href.startsWith('/') ? `https://www.digitalcombatsimulator.com${href}` : href;
       if (
-        fullUrl &&
-        title &&
-        title.length > 10 &&
+        fullUrl && title && title.length > 10 &&
         /^https?:\/\/www\.digitalcombatsimulator\.com\/en\/news\/.+/.test(fullUrl) &&
         !/\/changelog\//.test(fullUrl) &&
         !/\/news\/$/.test(fullUrl) &&
         !articles.find(a => a.link === fullUrl)
       ) {
-        articles.push({
-          source: 'DCS Official',
-          title,
-          link: fullUrl
-        });
+        articles.push({ source: 'DCS Official', title, link: fullUrl });
       }
-
-      if (articles.length >= 5) return false;
+      if (articles.length >= 3) return false;
     });
-
     return articles;
   } catch (e) {
     console.error('Errore DCS News:', e.message);
@@ -112,27 +107,35 @@ async function getDcsNews() {
   }
 }
 
-async function getNews() {
-  const all = [
-    ...(await getFlightSimNews()),
-    ...(await getDcsNews())
-  ];
+// --- Aggregatore principale ---
 
+async function getNews() {
+  const [flightSim, dcs, fselite, msfsAddons, threshold, flightsimTo] = await Promise.all([
+    getFlightSimNews(),
+    getDcsNews(),
+    getRssFeed('https://fselite.net/feed', 'FSElite'),
+    getRssFeed('https://msfsaddons.com/feed', 'MSFS Addons'),
+    getRssFeed('https://www.thresholdx.net/news/rss.xml', 'Threshold'),
+    getRssFeed('https://news.flightsim.to/rss', 'FlightSim.to')
+  ]);
+
+  const all = [...flightSim, ...dcs, ...fselite, ...msfsAddons, ...threshold, ...flightsimTo];
+
+  // Deduplica per link
   const unique = all.filter((article, index, self) =>
     index === self.findIndex(a => a.link === article.link)
   );
 
-  return unique.slice(0, 10);
+  return unique.slice(0, 15);
 }
+
+// --- Main ---
 
 async function main() {
   const articles = await getNews();
 
   const date = new Date().toLocaleDateString('it-IT', {
-    weekday: 'long',
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric',
+    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
     timeZone: 'Europe/Rome'
   });
 

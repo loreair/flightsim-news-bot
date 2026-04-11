@@ -18,10 +18,11 @@ if (!anthropicKey) {
 }
 
 const anthropic = new Anthropic({ apiKey: anthropicKey });
+const TELEGRAM_MAX = 4000; // margine di sicurezza sotto i 4096
 
-// --- Telegram ---
+// --- Telegram: verifica bot e invia con auto-split ---
 
-async function sendTelegram(msg) {
+async function verifyBot() {
   try {
     const me = await axios.get(`https://api.telegram.org/bot${token}/getMe`);
     console.log('✅ Bot valido:', me.data.result.username);
@@ -29,10 +30,13 @@ async function sendTelegram(msg) {
     console.error('❌ TELEGRAM_TOKEN non valido:', e.response?.data || e.message);
     process.exit(1);
   }
+}
+
+async function sendMessage(text) {
   try {
     await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
       chat_id: chatId,
-      text: msg,
+      text,
       parse_mode: 'HTML',
       disable_web_page_preview: false
     });
@@ -42,16 +46,33 @@ async function sendTelegram(msg) {
   }
 }
 
-// --- Riassunto in italiano via Claude Haiku 3.5 ---
+// Spezza il testo in chunk da max TELEGRAM_MAX caratteri, senza spezzare gli articoli
+async function sendTelegram(header, articlesBlocks) {
+  await verifyBot();
+
+  let current = header;
+  for (const block of articlesBlocks) {
+    if ((current + '\n\n' + block).length > TELEGRAM_MAX) {
+      await sendMessage(current);
+      await new Promise(r => setTimeout(r, 500)); // piccola pausa tra messaggi
+      current = block;
+    } else {
+      current += (current === header ? '\n\n' : '\n\n') + block;
+    }
+  }
+  if (current.trim()) await sendMessage(current);
+}
+
+// --- Riassunto in italiano via Claude Haiku 4.5 ---
 
 async function summarizeInItalian(title, link) {
   try {
     const response = await anthropic.messages.create({
       model: 'claude-haiku-4-5',
-      max_tokens: 200,
+      max_tokens: 150,
       messages: [{
         role: 'user',
-        content: `Sei un assistente per appassionati di simulazione di volo. Leggi il titolo di questo articolo e scrivi un riassunto in italiano di 2-3 frasi brevi, chiare e coinvolgenti, adatto a un canale Telegram di appassionati di flight sim (DCS, MSFS, X-Plane). Non aggiungere emoji. Rispondi SOLO con il testo del riassunto, nient'altro.
+        content: `Sei un assistente per appassionati di simulazione di volo. Leggi il titolo di questo articolo e scrivi un riassunto in italiano di 2 frasi brevi e coinvolgenti, adatto a un canale Telegram di appassionati di flight sim (DCS, MSFS, X-Plane). Non aggiungere emoji. Rispondi SOLO con il testo del riassunto, nient'altro.
 
 Titolo: ${title}
 URL: ${link}`
@@ -170,8 +191,11 @@ async function main() {
     timeZone: 'Europe/Rome'
   });
 
+  const header = `✈️ <b>FlightSim News By LOREAIR – ${date}</b>`;
+
   if (articles.length === 0) {
-    await sendTelegram(`✈️ <b>FlightSim News By LOREAIR – ${date}</b>\n\n📰 Buongiorno piloti, purtroppo il Bot non ha trovato nessuna news oggi`);
+    await verifyBot();
+    await sendMessage(`${header}\n\n📰 Buongiorno piloti, purtroppo il Bot non ha trovato nessuna news oggi`);
     console.log('✅ Messaggio inviato (nessuna news trovata)');
     return;
   }
@@ -181,15 +205,14 @@ async function main() {
     articles.map(a => summarizeInItalian(a.title, a.link))
   );
 
-  const newsText = articles
-    .map((a, i) => {
-      const summary = summaries[i] ? `\n<i>${summaries[i]}</i>` : '';
-      return `${i + 1}. <b>[${a.source}] ${a.title}</b>${summary}\n👉 ${a.link}`;
-    })
-    .join('\n\n');
+  // Costruisce un blocco per ogni articolo
+  const blocks = articles.map((a, i) => {
+    const summary = summaries[i] ? `\n<i>${summaries[i]}</i>` : '';
+    return `${i + 1}. <b>[${a.source}] ${a.title}</b>${summary}\n👉 ${a.link}`;
+  });
 
-  await sendTelegram(`✈️ <b>FlightSim News By LOREAIR – ${date}</b>\n\n${newsText}`);
-  console.log('✅ Messaggio Telegram inviato!');
+  await sendTelegram(header, blocks);
+  console.log(`✅ Inviati ${articles.length} articoli su Telegram!`);
 }
 
 main().catch(err => {

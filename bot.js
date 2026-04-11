@@ -1,15 +1,25 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
 const RSSParser = require('rss-parser');
+const Anthropic = require('@anthropic-ai/sdk');
 
 const token = process.env.TELEGRAM_TOKEN;
 const chatId = process.env.TELEGRAM_CHAT_ID;
+const anthropicKey = process.env.ANTHROPIC_API_KEY;
 const parser = new RSSParser();
 
 if (!token || !chatId) {
   console.error('❌ TELEGRAM_TOKEN o TELEGRAM_CHAT_ID mancanti!');
   process.exit(1);
 }
+if (!anthropicKey) {
+  console.error('❌ ANTHROPIC_API_KEY mancante!');
+  process.exit(1);
+}
+
+const anthropic = new Anthropic({ apiKey: anthropicKey });
+
+// --- Telegram ---
 
 async function sendTelegram(msg) {
   try {
@@ -32,6 +42,28 @@ async function sendTelegram(msg) {
   }
 }
 
+// --- Riassunto in italiano via Claude Haiku 3.5 ---
+
+async function summarizeInItalian(title, link) {
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: 200,
+      messages: [{
+        role: 'user',
+        content: `Sei un assistente per appassionati di simulazione di volo. Leggi il titolo di questo articolo e scrivi un riassunto in italiano di 2-3 frasi brevi, chiare e coinvolgenti, adatto a un canale Telegram di appassionati di flight sim (DCS, MSFS, X-Plane). Non aggiungere emoji. Rispondi SOLO con il testo del riassunto, nient'altro.
+
+Titolo: ${title}
+URL: ${link}`
+      }]
+    });
+    return response.content[0].text.trim();
+  } catch (e) {
+    console.error(`Errore riassunto Claude per "${title}":`, e.message);
+    return null;
+  }
+}
+
 // --- Fonti RSS ---
 
 async function getRssFeed(url, sourceName, limit = 3) {
@@ -48,7 +80,7 @@ async function getRssFeed(url, sourceName, limit = 3) {
   }
 }
 
-// --- Fonte scraping: flightsim.news (nessun RSS disponibile) ---
+// --- Fonte scraping: flightsim.news ---
 
 async function getFlightSimNews() {
   try {
@@ -76,7 +108,7 @@ async function getFlightSimNews() {
   }
 }
 
-// --- Fonte scraping: DCS Official (nessun RSS pubblico) ---
+// --- Fonte scraping: DCS Official ---
 
 async function getDcsNews() {
   try {
@@ -121,7 +153,6 @@ async function getNews() {
 
   const all = [...flightSim, ...dcs, ...fselite, ...msfsAddons, ...threshold, ...flightsimTo];
 
-  // Deduplica per link
   const unique = all.filter((article, index, self) =>
     index === self.findIndex(a => a.link === article.link)
   );
@@ -139,11 +170,23 @@ async function main() {
     timeZone: 'Europe/Rome'
   });
 
-  const newsText = articles.length === 0
-    ? '📰 Buongiorno piloti, purtroppo il Bot non ha trovato nessuna news oggi'
-    : articles
-        .map((a, i) => `${i + 1}. <b>[${a.source}] ${a.title}</b>\n👉 ${a.link}`)
-        .join('\n\n');
+  if (articles.length === 0) {
+    await sendTelegram(`✈️ <b>FlightSim News By LOREAIR – ${date}</b>\n\n📰 Buongiorno piloti, purtroppo il Bot non ha trovato nessuna news oggi`);
+    console.log('✅ Messaggio inviato (nessuna news trovata)');
+    return;
+  }
+
+  // Genera riassunti in italiano in parallelo
+  const summaries = await Promise.all(
+    articles.map(a => summarizeInItalian(a.title, a.link))
+  );
+
+  const newsText = articles
+    .map((a, i) => {
+      const summary = summaries[i] ? `\n<i>${summaries[i]}</i>` : '';
+      return `${i + 1}. <b>[${a.source}] ${a.title}</b>${summary}\n👉 ${a.link}`;
+    })
+    .join('\n\n');
 
   await sendTelegram(`✈️ <b>FlightSim News By LOREAIR – ${date}</b>\n\n${newsText}`);
   console.log('✅ Messaggio Telegram inviato!');

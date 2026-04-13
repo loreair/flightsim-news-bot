@@ -25,7 +25,7 @@ const TELEGRAM_MAX = 4000;
 // --- Cache link già inviati ---
 
 const CACHE_FILE = path.join(__dirname, 'sent_links.json');
-const MAX_CACHE_SIZE = 500; // limite per non far crescere il file all'infinito
+const MAX_CACHE_SIZE = 500;
 
 function loadSentLinks() {
   try {
@@ -43,7 +43,6 @@ function saveSentLinks(sentSet) {
   try {
     let arr = Array.from(sentSet);
     if (arr.length > MAX_CACHE_SIZE) {
-      // mantieni solo gli ultimi MAX_CACHE_SIZE
       arr = arr.slice(arr.length - MAX_CACHE_SIZE);
     }
     fs.writeFileSync(CACHE_FILE, JSON.stringify(arr, null, 2), 'utf8');
@@ -210,38 +209,47 @@ async function getNews() {
   return unique.slice(0, 15);
 }
 
+// --- Costruisce la data nel formato DD/MM/AAAA ora italiana ---
+
+function getItalianDate() {
+  const now = new Date();
+  const options = { timeZone: 'Europe/Rome', day: '2-digit', month: '2-digit', year: 'numeric' };
+  // Formato: 14/04/2026
+  return now.toLocaleDateString('it-IT', options);
+}
+
 // --- Main ---
 
 async function main() {
-  // Carica cache link già inviati
   const sentLinks = loadSentLinks();
 
   const allArticles = await getNews();
-
-  // Filtra solo gli articoli NON ancora inviati
   const newArticles = allArticles.filter(a => !sentLinks.has(a.link));
   console.log(`📰 Trovati ${allArticles.length} articoli totali, ${newArticles.length} nuovi (non ancora inviati).`);
 
-  const date = new Date().toLocaleDateString('it-IT', {
-    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
-    timeZone: 'Europe/Rome'
-  });
+  const italianDate = getItalianDate();
 
-  const header = `✈️ <b>FlightSim News By LOREAIR – ${date}</b>`;
+  // Header con formattazione richiesta
+  const header =
+`✈️ <b>Buongiorno piloti e buon ${italianDate}</b>
+
+Come ogni giorno, qui di seguito, le principali notizie dal mondo della simulazione di volo.
+Buona lettura
+Happy Landings
+I-LAIR
+( By bot loreair)`;
 
   if (newArticles.length === 0) {
     await verifyBot();
-    await sendMessage(`${header}\n\n📰 Buongiorno piloti, nessuna novità rispetto all'ultimo invio. Ci aggiorniamo al prossimo giro!`);
+    await sendMessage(`${header}\n\n📰 Nessuna novità rispetto all'ultimo invio. Ci aggiorniamo al prossimo giro!`);
     console.log('✅ Messaggio inviato (nessuna news nuova trovata)');
     return;
   }
 
-  // Genera riassunti in italiano in parallelo
   const summaries = await Promise.all(
     newArticles.map(a => summarizeInItalian(a.title, a.link))
   );
 
-  // Costruisce un blocco per ogni articolo
   const blocks = newArticles.map((a, i) => {
     const summary = summaries[i] ? `\n<i>${summaries[i]}</i>` : '';
     return `${i + 1}. <b>[${a.source}] ${a.title}</b>${summary}\n👉 ${a.link}`;
@@ -250,7 +258,6 @@ async function main() {
   await sendTelegram(header, blocks);
   console.log(`✅ Inviati ${newArticles.length} articoli su Telegram!`);
 
-  // Aggiorna la cache con i link appena inviati
   newArticles.forEach(a => sentLinks.add(a.link));
   saveSentLinks(sentLinks);
 }

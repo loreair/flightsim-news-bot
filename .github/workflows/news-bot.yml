@@ -2,8 +2,11 @@ name: FlightSim News Bot
 
 on:
   schedule:
-    - cron: '0 4 */3 * *'  # Ogni 3 giorni alle 06:00 ora italiana estiva (CEST = UTC+2)
-    # In inverno (CET = UTC+1) cambia in: '0 5 */3 * *'
+    # Prima uscita: martedì 14 aprile 2026 alle 06:30 CEST (= 04:30 UTC)
+    - cron: '30 4 14 4 *'
+    # Dal 17 aprile in poi: ogni 3 giorni alle 06:30 CEST (= 04:30 UTC, ora estiva)
+    # In inverno (CET = UTC+1) aggiornare in: '30 5 */3 * *'
+    - cron: '30 4 */3 * *'
   workflow_dispatch:
 
 env:
@@ -13,7 +16,7 @@ jobs:
   send-news:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # necessario per committare sent_links.json
+      contents: write
 
     steps:
     - uses: actions/checkout@v4

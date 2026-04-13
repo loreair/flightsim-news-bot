@@ -2,6 +2,8 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const RSSParser = require('rss-parser');
 const Anthropic = require('@anthropic-ai/sdk');
+const fs = require('fs');
+const path = require('path');
 
 const token = process.env.TELEGRAM_TOKEN;
 const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -18,7 +20,38 @@ if (!anthropicKey) {
 }
 
 const anthropic = new Anthropic({ apiKey: anthropicKey });
-const TELEGRAM_MAX = 4000; // margine di sicurezza sotto i 4096
+const TELEGRAM_MAX = 4000;
+
+// --- Cache link già inviati ---
+
+const CACHE_FILE = path.join(__dirname, 'sent_links.json');
+const MAX_CACHE_SIZE = 500; // limite per non far crescere il file all'infinito
+
+function loadSentLinks() {
+  try {
+    if (fs.existsSync(CACHE_FILE)) {
+      const data = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
+      return new Set(Array.isArray(data) ? data : []);
+    }
+  } catch (e) {
+    console.warn('⚠️ Impossibile leggere sent_links.json, si parte da zero:', e.message);
+  }
+  return new Set();
+}
+
+function saveSentLinks(sentSet) {
+  try {
+    let arr = Array.from(sentSet);
+    if (arr.length > MAX_CACHE_SIZE) {
+      // mantieni solo gli ultimi MAX_CACHE_SIZE
+      arr = arr.slice(arr.length - MAX_CACHE_SIZE);
+    }
+    fs.writeFileSync(CACHE_FILE, JSON.stringify(arr, null, 2), 'utf8');
+    console.log(`💾 Cache aggiornata: ${arr.length} link salvati.`);
+  } catch (e) {
+    console.error('❌ Impossibile salvare sent_links.json:', e.message);
+  }
+}
 
 // --- Telegram: verifica bot e invia con auto-split ---
 
@@ -46,7 +79,6 @@ async function sendMessage(text) {
   }
 }
 
-// Spezza il testo in chunk da max TELEGRAM_MAX caratteri, senza spezzare gli articoli
 async function sendTelegram(header, articlesBlocks) {
   await verifyBot();
 
@@ -54,10 +86,10 @@ async function sendTelegram(header, articlesBlocks) {
   for (const block of articlesBlocks) {
     if ((current + '\n\n' + block).length > TELEGRAM_MAX) {
       await sendMessage(current);
-      await new Promise(r => setTimeout(r, 500)); // piccola pausa tra messaggi
+      await new Promise(r => setTimeout(r, 500));
       current = block;
     } else {
-      current += (current === header ? '\n\n' : '\n\n') + block;
+      current += '\n\n' + block;
     }
   }
   if (current.trim()) await sendMessage(current);
@@ -72,10 +104,7 @@ async function summarizeInItalian(title, link) {
       max_tokens: 150,
       messages: [{
         role: 'user',
-        content: `Sei un assistente per appassionati di simulazione di volo. Leggi il titolo di questo articolo e scrivi un riassunto in italiano di 2 frasi brevi e coinvolgenti, adatto a un canale Telegram di appassionati di flight sim (DCS, MSFS, X-Plane). Non aggiungere emoji. Rispondi SOLO con il testo del riassunto, nient'altro.
-
-Titolo: ${title}
-URL: ${link}`
+        content: `Sei un assistente per appassionati di simulazione di volo. Leggi il titolo di questo articolo e scrivi un riassunto in italiano di 2 frasi brevi e coinvolgenti, adatto a un canale Telegram di appassionati di flight sim (DCS, MSFS, X-Plane). Non aggiungere emoji. Rispondi SOLO con il testo del riassunto, nient'altro.\n\nTitolo: ${title}\nURL: ${link}`
       }]
     });
     return response.content[0].text.trim();
@@ -184,7 +213,14 @@ async function getNews() {
 // --- Main ---
 
 async function main() {
-  const articles = await getNews();
+  // Carica cache link già inviati
+  const sentLinks = loadSentLinks();
+
+  const allArticles = await getNews();
+
+  // Filtra solo gli articoli NON ancora inviati
+  const newArticles = allArticles.filter(a => !sentLinks.has(a.link));
+  console.log(`📰 Trovati ${allArticles.length} articoli totali, ${newArticles.length} nuovi (non ancora inviati).`);
 
   const date = new Date().toLocaleDateString('it-IT', {
     weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
@@ -193,26 +229,30 @@ async function main() {
 
   const header = `✈️ <b>FlightSim News By LOREAIR – ${date}</b>`;
 
-  if (articles.length === 0) {
+  if (newArticles.length === 0) {
     await verifyBot();
-    await sendMessage(`${header}\n\n📰 Buongiorno piloti, purtroppo il Bot non ha trovato nessuna news oggi`);
-    console.log('✅ Messaggio inviato (nessuna news trovata)');
+    await sendMessage(`${header}\n\n📰 Buongiorno piloti, nessuna novità rispetto all'ultimo invio. Ci aggiorniamo al prossimo giro!`);
+    console.log('✅ Messaggio inviato (nessuna news nuova trovata)');
     return;
   }
 
   // Genera riassunti in italiano in parallelo
   const summaries = await Promise.all(
-    articles.map(a => summarizeInItalian(a.title, a.link))
+    newArticles.map(a => summarizeInItalian(a.title, a.link))
   );
 
   // Costruisce un blocco per ogni articolo
-  const blocks = articles.map((a, i) => {
+  const blocks = newArticles.map((a, i) => {
     const summary = summaries[i] ? `\n<i>${summaries[i]}</i>` : '';
     return `${i + 1}. <b>[${a.source}] ${a.title}</b>${summary}\n👉 ${a.link}`;
   });
 
   await sendTelegram(header, blocks);
-  console.log(`✅ Inviati ${articles.length} articoli su Telegram!`);
+  console.log(`✅ Inviati ${newArticles.length} articoli su Telegram!`);
+
+  // Aggiorna la cache con i link appena inviati
+  newArticles.forEach(a => sentLinks.add(a.link));
+  saveSentLinks(sentLinks);
 }
 
 main().catch(err => {

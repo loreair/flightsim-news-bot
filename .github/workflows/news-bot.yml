@@ -2,7 +2,8 @@ name: FlightSim News Bot
 
 on:
   schedule:
-    - cron: '30 4 * * *'  # 6:30 ora italiana estiva (CEST = UTC+2) | inverno cambia in '30 3 * * *' (CET = UTC+1)
+    - cron: '0 4 */3 * *'  # Ogni 3 giorni alle 06:00 ora italiana estiva (CEST = UTC+2)
+    # In inverno (CET = UTC+1) cambia in: '0 5 */3 * *'
   workflow_dispatch:
 
 env:
@@ -11,20 +12,31 @@ env:
 jobs:
   send-news:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # necessario per committare sent_links.json
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Setup Node.js 24
       uses: actions/setup-node@v4
       with:
         node-version: '24'
-        
+
     - name: Install dependencies
       run: npm install cheerio axios rss-parser @anthropic-ai/sdk
-      
+
     - name: Run bot
       env:
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       run: node bot.js
+
+    - name: Save sent_links cache to repo
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add sent_links.json
+        git diff --cached --quiet || git commit -m "chore: update sent_links cache [skip ci]"
+        git push

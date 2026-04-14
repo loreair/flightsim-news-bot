@@ -8,7 +8,6 @@ const path = require('path');
 const token = process.env.TELEGRAM_TOKEN;
 const chatId = process.env.TELEGRAM_CHAT_ID;
 const anthropicKey = process.env.ANTHROPIC_API_KEY;
-const parser = new RSSParser();
 
 if (!token || !chatId) {
   console.error('❌ TELEGRAM_TOKEN o TELEGRAM_CHAT_ID mancanti!');
@@ -21,6 +20,16 @@ if (!anthropicKey) {
 
 const anthropic = new Anthropic({ apiKey: anthropicKey });
 const TELEGRAM_MAX = 4000;
+
+// rss-parser configurato con headers che prevengono il 415
+// Alcuni server WordPress/Cloudflare rifiutano richieste senza Accept esplicito
+const parser = new RSSParser({
+  headers: {
+    'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+    'User-Agent': 'Mozilla/5.0 (compatible; FlightSimNewsBot/1.0; +https://github.com/loreair/flightsim-news-bot)'
+  },
+  timeout: 10000
+});
 
 // --- Cache link già inviati ---
 
@@ -114,17 +123,23 @@ async function summarizeInItalian(title, link) {
 }
 
 // --- Fonti RSS ---
+// Il parser ha già gli headers corretti a livello globale.
+// Timeout e retry per resilienza su fonti instabili.
 
 async function getRssFeed(url, sourceName, limit = 3) {
   try {
     const feed = await parser.parseURL(url);
-    return feed.items.slice(0, limit).map(item => ({
+    const items = feed.items.slice(0, limit).map(item => ({
       source: sourceName,
       title: item.title?.trim() || '(senza titolo)',
       link: item.link?.trim() || ''
     })).filter(a => a.link);
+    console.log(`✅ RSS ${sourceName}: ${items.length} articoli`);
+    return items;
   } catch (e) {
-    console.error(`Errore RSS ${sourceName}:`, e.message);
+    // Log dettagliato: distingue errore di rete da errore HTTP
+    const status = e.response?.status || e.statusCode || 'N/A';
+    console.error(`❌ Errore RSS ${sourceName} [HTTP ${status}]: ${e.message}`);
     return [];
   }
 }
@@ -134,7 +149,8 @@ async function getRssFeed(url, sourceName, limit = 3) {
 async function getFlightSimNews() {
   try {
     const { data } = await axios.get('https://flightsim.news/', {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FlightSimNewsBot/1.0)' }
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FlightSimNewsBot/1.0)' },
+      timeout: 10000
     });
     const $ = cheerio.load(data);
     const articles = [];
@@ -150,9 +166,10 @@ async function getFlightSimNews() {
       }
       if (articles.length >= 3) return false;
     });
+    console.log(`✅ Scraping FlightSim News: ${articles.length} articoli`);
     return articles;
   } catch (e) {
-    console.error('Errore FlightSim News:', e.message);
+    console.error(`❌ Errore FlightSim News: ${e.message}`);
     return [];
   }
 }
@@ -162,7 +179,8 @@ async function getFlightSimNews() {
 async function getDcsNews() {
   try {
     const { data } = await axios.get('https://www.digitalcombatsimulator.com/en/news/', {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FlightSimNewsBot/1.0)' }
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FlightSimNewsBot/1.0)' },
+      timeout: 10000
     });
     const $ = cheerio.load(data);
     const articles = [];
@@ -181,9 +199,10 @@ async function getDcsNews() {
       }
       if (articles.length >= 3) return false;
     });
+    console.log(`✅ Scraping DCS Official: ${articles.length} articoli`);
     return articles;
   } catch (e) {
-    console.error('Errore DCS News:', e.message);
+    console.error(`❌ Errore DCS News: ${e.message}`);
     return [];
   }
 }
@@ -214,7 +233,6 @@ async function getNews() {
 function getItalianDate() {
   const now = new Date();
   const options = { timeZone: 'Europe/Rome', day: '2-digit', month: '2-digit', year: 'numeric' };
-  // Formato: 14/04/2026
   return now.toLocaleDateString('it-IT', options);
 }
 
@@ -229,7 +247,6 @@ async function main() {
 
   const italianDate = getItalianDate();
 
-  // Header con formattazione richiesta
   const header =
 `✈️ <b>Buongiorno piloti e buon ${italianDate}</b>
 
@@ -263,6 +280,6 @@ I-LAIR
 }
 
 main().catch(err => {
-  console.error('❌ Errore:', err.message);
+  console.error('❌ Errore fatale:', err.message);
   process.exit(1);
 });

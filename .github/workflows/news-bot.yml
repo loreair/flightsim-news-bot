@@ -2,8 +2,6 @@ name: FlightSim News Bot
 
 on:
   schedule:
-    # Prima uscita: martedì 14 aprile 2026 alle 06:30 CEST (= 04:30 UTC)
-    - cron: '30 4 14 4 *'
     # Dal 17 aprile in poi: ogni 3 giorni alle 06:30 CEST (= 04:30 UTC, ora estiva)
     # In inverno (CET = UTC+1) aggiornare in: '30 5 */3 * *'
     - cron: '30 4 */3 * *'
@@ -20,6 +18,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0   # necessario per git pull --rebase
 
     - name: Setup Node.js 24
       uses: actions/setup-node@v4
@@ -36,10 +36,12 @@ jobs:
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       run: node bot.js
 
-    - name: Save sent_links cache to repo
+    - name: Salva cache sent_links nel repo
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
+        git pull --rebase origin main
         git add sent_links.json
-        git diff --cached --quiet || git commit -m "chore: update sent_links cache [skip ci]"
-        git push
+        git diff --cached --quiet && echo "Nessuna modifica alla cache, skip commit." && exit 0
+        git commit -m "chore: update sent_links cache [skip ci]"
+        git push origin main

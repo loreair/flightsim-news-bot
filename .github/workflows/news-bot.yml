@@ -2,9 +2,9 @@ name: FlightSim News Bot
 
 on:
   schedule:
-    # Due volte a settimana: lunedì e giovedì alle 06:30 CEST (= 04:30 UTC, ora estiva)
-    # In inverno (CET = UTC+1) aggiornare in: '30 5 * * 1,4'
-    - cron: '30 4 * * 1,4'
+    # Due volte a settimana: mercoledì e sabato alle 06:30 CEST (= 04:30 UTC, ora estiva)
+    # In inverno (CET = UTC+1) aggiornare in: '30 5 * * 3,6'
+    - cron: '30 4 * * 3,6'
   workflow_dispatch:
 
 env:

@@ -1,8 +1,19 @@
 # FlightSim News Bot
 
+🇮🇹 Italiano | 🇬🇧 [English](README.en.md)
+
 Bot Telegram che ogni sabato mattina pubblica le principali notizie dal mondo della simulazione di volo (MSFS, DCS, X-Plane), con un breve riassunto in italiano per ogni articolo.
 
 Autore: I-LAIR (bot loreair)
+
+## Seguimi
+
+- YouTube: [youtube.com/@LOREAIR](https://youtube.com/@LOREAIR)
+- Twitch: [twitch.tv/loreair](https://www.twitch.tv/loreair)
+- Instagram: [@loreair_aviation](https://www.instagram.com/loreair_aviation/)
+- Discord: [discord.gg/37wpFTNbsy](https://discord.gg/37wpFTNbsy)
+- Telegram (canale): [t.me/LoreairOfficial](https://t.me/LoreairOfficial)
+- GitHub: [github.com/loreair](https://github.com/loreair)
 
 ## Come funziona
 
@@ -79,3 +90,4 @@ TELEGRAM_TOKEN=... TELEGRAM_CHAT_ID=... ANTHROPIC_API_KEY=... node bot.js
 - `.github/workflows/news-bot.yml`: pianificazione ed esecuzione.
 - `sent_links.json`: cache dei link già inviati, aggiornata dal workflow con un commit automatico (`[skip ci]`).
 - `flightsim-news-bot_V2_0.html`: pagina HTML del progetto.
+- `README.en.md`: versione inglese di questo documento.

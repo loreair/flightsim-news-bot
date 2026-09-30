@@ -1,61 +1,81 @@
-# ✈️ FlightSim News Bot — By LOREAIR
+# FlightSim News Bot
 
-## Cos'è questo bot?
+Bot Telegram che ogni sabato mattina pubblica le principali notizie dal mondo della simulazione di volo (MSFS, DCS, X-Plane), con un breve riassunto in italiano per ogni articolo.
 
-**FlightSim News Bot** è un bot Telegram automatico creato da **LOREAIR** per tutti gli appassionati di simulazione di volo.
+Autore: I-LAIR (bot loreair)
 
-Ogni 3 giorni, alle **ore 06:30 (ora italiana)**, il bot raccoglie e invia automaticamente le principali notizie dal mondo della simulazione di volo direttamente su Telegram, con un riassunto in italiano generato tramite intelligenza artificiale (Claude Haiku di Anthropic).
+## Come funziona
 
-## A chi è rivolto?
+1. Raccoglie gli ultimi articoli da sei fonti (massimo 3 per fonte, massimo 15 in totale dopo la rimozione dei duplicati).
+2. Scarta i link già inviati, memorizzati in `sent_links.json`.
+3. Genera per ogni articolo nuovo un riassunto di 2 frasi in italiano con Claude Haiku 4.5.
+4. Invia il messaggio su Telegram, dividendolo automaticamente in più parti se supera i 4000 caratteri.
+5. Aggiorna `sent_links.json` (massimo 500 link) e lo salva nel repository.
 
-Questo bot è pensato per:
-- Appassionati di **DCS World** (Digital Combat Simulator)
-- Appassionati di **Microsoft Flight Simulator (MSFS)**
-- Piloti virtuali e fan di **X-Plane**
-- Chiunque voglia restare aggiornato sul mondo dei **joystick, HOTAS, addon e aggiornamenti** dei principali simulatori di volo
+Se non ci sono articoli nuovi, il bot invia comunque il messaggio di apertura con l'avviso "Nessuna novità".
 
-## 📢 Canale Telegram
+## Pianificazione
 
-Le notizie vengono pubblicate sul canale Telegram ufficiale di LOREAIR.
-Unisciti per ricevere le news ogni 3 giorni direttamente sul tuo smartphone!
+Il bot viene eseguito da GitHub Actions **una sola volta a settimana, il sabato alle 07:00 (ora di Roma)**.
 
-## 📰 Fonti monitorate
+GitHub Actions usa l'orario UTC e non gestisce i fusi orari, quindi il workflow (`.github/workflows/news-bot.yml`) contiene due cron:
 
-Il bot aggrega notizie dalle seguenti fonti:
+| Periodo | Cron (UTC) | Ora a Roma |
+|---|---|---|
+| Ora legale (CEST) | `0 5 * * 6` | 07:00 |
+| Ora solare (CET) | `0 6 * * 6` | 07:00 |
 
-| Fonte | Tipo |
+Uno step iniziale controlla l'ora locale (`Europe/Rome`) e lascia proseguire il run solo se sono le 07. In questo modo l'invio resta alle 7:00 tutto l'anno, senza modifiche manuali al cambio dell'ora. Gli avvii manuali (`workflow_dispatch`) partono sempre.
+
+Nota: GitHub può ritardare i run pianificati nei momenti di carico. Se il ritardo supera un'ora, l'invio della settimana viene saltato e va lanciato a mano da Actions.
+
+## Messaggio di apertura
+
+```
+✈️ Buongiorno piloti e buon GG/MM/AAAA
+
+Come ogni sabato mattina ecco le principali notizie dal mondo della simulazione di volo.
+Buona lettura
+Happy Landings
+I-LAIR
+( By bot loreair)
+```
+
+La data è calcolata in automatico sul fuso orario di Roma.
+
+## Fonti
+
+- FlightSim News (scraping)
+- DCS Official (scraping)
+- FSElite (RSS)
+- MSFS Addons (RSS)
+- Threshold (RSS)
+- FlightSim.to (RSS)
+
+## Configurazione
+
+Nel repository vanno impostati questi segreti (Settings > Secrets and variables > Actions):
+
+| Segreto | Descrizione |
 |---|---|
-| [FlightSim News](https://flightsim.news) | Scraping |
-| [DCS Official](https://www.digitalcombatsimulator.com/en/news/) | Scraping |
-| [FSElite](https://fselite.net) | RSS |
-| [MSFS Addons](https://msfsaddons.com) | RSS |
-| [Threshold](https://www.thresholdx.net) | RSS |
-| [FlightSim.to News](https://news.flightsim.to) | RSS |
+| `TELEGRAM_TOKEN` | Token del bot, ottenuto da @BotFather |
+| `TELEGRAM_CHAT_ID` | ID del canale o della chat di destinazione |
+| `ANTHROPIC_API_KEY` | Chiave API Anthropic per i riassunti |
 
-## ⚙️ Come funziona
+## Avvio manuale
 
-1. Il bot viene eseguito automaticamente tramite **GitHub Actions** ogni 3 giorni alle 06:30 ora italiana
-2. Raccoglie le notizie più recenti da tutte le fonti
-3. Filtra gli articoli già pubblicati in precedenza (nessuna ripetizione)
-4. Genera un riassunto in italiano per ogni articolo tramite **Claude Haiku (Anthropic AI)**
-5. Invia tutto sul canale Telegram con intestazione e firma I-LAIR
+Da GitHub: scheda **Actions**, workflow **FlightSim News Bot**, pulsante **Run workflow**. Il messaggio viene inviato subito su Telegram.
 
-## 🎥 Video sulla simulazione di volo
+In locale (Node.js 24):
 
-Se sei appassionato di flight sim, puoi guardare i video di LOREAIR su YouTube: tutorial, recensioni, sessioni di volo su DCS e MSFS e molto altro!
+```bash
+npm install cheerio axios rss-parser @anthropic-ai/sdk
+TELEGRAM_TOKEN=... TELEGRAM_CHAT_ID=... ANTHROPIC_API_KEY=... node bot.js
+```
 
-👉 **[youtube.com/@LOREAIR](https://www.youtube.com/@LOREAIR)**
+## File del repository
 
-## 🛠️ Tecnologie utilizzate
-
-- **Node.js** — runtime JavaScript
-- **node-telegram-bot-api / axios** — invio messaggi Telegram
-- **cheerio** — scraping HTML
-- **rss-parser** — lettura feed RSS
-- **@anthropic-ai/sdk** — riassunti AI in italiano
-- **GitHub Actions** — scheduling e deployment automatico
-
----
-
-*Happy Landings! ✈️*  
-*I-LAIR — By bot loreair*
+- `bot.js`: logica del bot.
+- `.github/workflows/news-bot.yml`: pianificazione ed esecuzione.
+- `sent_links.json`: cache dei link già inviati, aggiornata dal workflow con un commit automatico (`[skip ci]`).
+- `flightsim-news-bot_V2_0.html`: pagina HTML del progetto.

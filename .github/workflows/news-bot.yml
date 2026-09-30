@@ -2,9 +2,11 @@ name: FlightSim News Bot
 
 on:
   schedule:
-    # Due volte a settimana: mercoledì e sabato alle 06:30 CEST (= 04:30 UTC, ora estiva)
-    # In inverno (CET = UTC+1) aggiornare in: '30 5 * * 3,6'
-    - cron: '30 4 * * 3,6'
+    # Una volta a settimana: sabato alle 07:00 ora di Roma.
+    # GitHub usa UTC: 05:00 UTC = 07:00 CEST (estate), 06:00 UTC = 07:00 CET (inverno).
+    # Entrambi i cron sono attivi; lo step "Controllo ora locale" lascia passare solo quello giusto.
+    - cron: '0 5 * * 6'
+    - cron: '0 6 * * 6'
   workflow_dispatch:
 
 env:
@@ -17,17 +19,33 @@ jobs:
       contents: write
 
     steps:
+    - name: Controllo ora locale (Europe/Rome)
+      id: gate
+      run: |
+        H=$(TZ=Europe/Rome date +%H)
+        echo "Ora locale a Roma: $H"
+        if [ "${{ github.event_name }}" = "schedule" ] && [ "$H" != "07" ]; then
+          echo "Non sono le 07:00 a Roma, salto questo run."
+          echo "run=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "run=true" >> "$GITHUB_OUTPUT"
+        fi
+
     - uses: actions/checkout@v4
+      if: steps.gate.outputs.run == 'true'
 
     - name: Setup Node.js 24
+      if: steps.gate.outputs.run == 'true'
       uses: actions/setup-node@v4
       with:
         node-version: '24'
 
     - name: Install dependencies
+      if: steps.gate.outputs.run == 'true'
       run: npm install cheerio axios rss-parser @anthropic-ai/sdk
 
     - name: Run bot
+      if: steps.gate.outputs.run == 'true'
       env:
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -35,6 +53,7 @@ jobs:
       run: node bot.js
 
     - name: Salva cache sent_links nel repo
+      if: steps.gate.outputs.run == 'true'
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"

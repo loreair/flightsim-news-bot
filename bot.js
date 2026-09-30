@@ -250,7 +250,7 @@ async function main() {
   const header =
 `✈️ <b>Buongiorno piloti e buon ${italianDate}</b>
 
-Come ogni giorno, qui di seguito, le principali notizie dal mondo della simulazione di volo.
+Come ogni sabato mattina ecco le principali notizie dal mondo della simulazione di volo.
 Buona lettura
 Happy Landings
 I-LAIR

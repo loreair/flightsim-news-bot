@@ -207,6 +207,101 @@ async function getDcsNews() {
   }
 }
 
+// --- Deduplicazione articoli ---
+
+function normalizeUrl(rawUrl) {
+  try {
+    const url = new URL(rawUrl.trim());
+
+    url.protocol = 'https:';
+    url.hostname = url.hostname.replace(/^www\./, '').toLowerCase();
+    url.hash = '';
+
+    // Elimina i parametri di tracciamento più comuni
+    for (const key of [...url.searchParams.keys()]) {
+      if (
+        key.toLowerCase().startsWith('utm_') ||
+        ['fbclid', 'gclid', 'mc_cid', 'mc_eid'].includes(key.toLowerCase())
+      ) {
+        url.searchParams.delete(key);
+      }
+    }
+
+    url.searchParams.sort();
+
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return rawUrl.trim().replace(/\/$/, '');
+  }
+}
+
+function normalizeTitle(title) {
+  return title
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function titleWords(title) {
+  const stopWords = new Set([
+    'a', 'ad', 'al', 'alla', 'allo', 'ai', 'agli', 'alle',
+    'anche', 'con', 'da', 'dal', 'dalla', 'de', 'del', 'della',
+    'di', 'e', 'ed', 'il', 'in', 'la', 'le', 'lo', 'ma',
+    'nel', 'nella', 'nei', 'non', 'per', 'su', 'tra', 'un',
+    'una', 'uno', 'and', 'for', 'from', 'in', 'of', 'on',
+    'the', 'to', 'with', 'new', 'news', 'update', 'available'
+  ]);
+
+  return new Set(
+    normalizeTitle(title)
+      .split(' ')
+      .filter(word => word.length >= 3 && !stopWords.has(word))
+  );
+}
+
+function areSimilarTitles(titleA, titleB) {
+  const wordsA = titleWords(titleA);
+  const wordsB = titleWords(titleB);
+
+  if (wordsA.size === 0 || wordsB.size === 0) return false;
+
+  const intersection = [...wordsA].filter(word => wordsB.has(word)).length;
+  const union = new Set([...wordsA, ...wordsB]).size;
+  const similarity = intersection / union;
+
+  return similarity >= 0.75;
+}
+
+function deduplicateArticles(articles) {
+  const unique = [];
+
+  for (const article of articles) {
+    const normalizedLink = normalizeUrl(article.link);
+
+    const duplicate = unique.find(existing =>
+      normalizeUrl(existing.link) === normalizedLink ||
+      areSimilarTitles(existing.title, article.title)
+    );
+
+    if (!duplicate) {
+      unique.push({
+        ...article,
+        link: normalizedLink
+      });
+    } else {
+      console.log(
+        `♻️ Duplicato scartato: "${article.title}" ` +
+        `(già presente come "${duplicate.title}")`
+      );
+    }
+  }
+
+  return unique;
+}
+
 // --- Aggregatore principale ---
 
 async function getNews() {
@@ -221,9 +316,7 @@ async function getNews() {
 
   const all = [...flightSim, ...dcs, ...fselite, ...msfsAddons, ...threshold, ...flightsimTo];
 
-  const unique = all.filter((article, index, self) =>
-    index === self.findIndex(a => a.link === article.link)
-  );
+  const unique = deduplicateArticles(all);
 
   return unique.slice(0, 15);
 }
@@ -239,10 +332,12 @@ function getItalianDate() {
 // --- Main ---
 
 async function main() {
-  const sentLinks = loadSentLinks();
+  const sentLinks = new Set(
+    [...loadSentLinks()].map(normalizeUrl)
+  );
 
   const allArticles = await getNews();
-  const newArticles = allArticles.filter(a => !sentLinks.has(a.link));
+  const newArticles = allArticles.filter(a => !sentLinks.has(normalizeUrl(a.link)));
   console.log(`📰 Trovati ${allArticles.length} articoli totali, ${newArticles.length} nuovi (non ancora inviati).`);
 
   const italianDate = getItalianDate();
@@ -275,7 +370,7 @@ I-LAIR
   await sendTelegram(header, blocks);
   console.log(`✅ Inviati ${newArticles.length} articoli su Telegram!`);
 
-  newArticles.forEach(a => sentLinks.add(a.link));
+  newArticles.forEach(a => sentLinks.add(normalizeUrl(a.link)));
   saveSentLinks(sentLinks);
 }
 

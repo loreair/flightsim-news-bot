@@ -22,14 +22,15 @@ jobs:
     - name: Controllo ora locale (Europe/Rome)
       id: gate
       run: |
-        H=$(TZ=Europe/Rome date +%H)
-        echo "Ora locale a Roma: $H"
-        if [ "${{ github.event_name }}" = "schedule" ] && [ "$H" != "07" ]; then
-          echo "Non sono le 07:00 a Roma, salto questo run."
-          echo "run=false" >> "$GITHUB_OUTPUT"
-        else
-          echo "run=true" >> "$GITHUB_OUTPUT"
+        OFFSET=$(TZ=Europe/Rome date +%z)
+        echo "Evento: ${{ github.event_name }} | cron: ${{ github.event.schedule }} | offset Roma: $OFFSET"
+        RUN=true
+        if [ "${{ github.event_name }}" = "schedule" ]; then
+          if [ "$OFFSET" = "+0200" ] && [ "${{ github.event.schedule }}" != "0 5 * * 6" ]; then RUN=false; fi
+          if [ "$OFFSET" = "+0100" ] && [ "${{ github.event.schedule }}" != "0 6 * * 6" ]; then RUN=false; fi
         fi
+        [ "$RUN" = "false" ] && echo "Cron non pertinente per l'ora legale/solare corrente, salto questo run."
+        echo "run=$RUN" >> "$GITHUB_OUTPUT"
 
     - uses: actions/checkout@v4
       if: steps.gate.outputs.run == 'true'

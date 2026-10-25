@@ -4,7 +4,7 @@ const RSSParser = require('rss-parser');
 const Anthropic = require('@anthropic-ai/sdk');
 const fs = require('fs');
 const path = require('path');
-const { toItem, buildMessages } = require('./format');
+const { toItem, buildPosts } = require('./format');
 
 const token = process.env.TELEGRAM_TOKEN;
 const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -29,9 +29,13 @@ if (!DRY_RUN && !anthropicKey) {
 
 const anthropic = anthropicKey ? new Anthropic({ apiKey: anthropicKey }) : null;
 
-// Banner con i loghi, mostrato sopra il testo come anteprima di link
-const BANNER_URL = 'https://raw.githubusercontent.com/loreair/flightsim-news-bot/main/assets/banner.png';
+// Immagini (banner e cartelli gialli) pubblicate nel repo: Telegram le scarica da qui
+const ASSET_BASE = 'https://raw.githubusercontent.com/loreair/flightsim-news-bot/main/assets';
 const MAX_ARTICLES = 20;
+
+// Canale YouTube @loreair: i video degli ultimi 7 giorni aprono il messaggio
+const YOUTUBE_FEED = 'https://www.youtube.com/feeds/videos.xml?channel_id=UC-9IJ9-6Lw2QlqP0XKKlFQw';
+const VIDEO_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 // rss-parser configurato con headers che prevengono il 415
 // Alcuni server WordPress/Cloudflare rifiutano richieste senza Accept esplicito
@@ -85,52 +89,60 @@ async function verifyBot() {
   }
 }
 
-// Il primo messaggio mostra il banner sopra il testo; gli altri non hanno anteprime.
-async function sendMessage(text, { withBanner = false, silent = false } = {}) {
-  const payload = {
-    chat_id: chatId,
-    text,
-    parse_mode: 'HTML',
-    disable_notification: silent,
-    link_preview_options: withBanner
-      ? { url: BANNER_URL, show_above_text: true, prefer_large_media: true }
-      : { is_disabled: true }
-  };
+function assetUrl(key) {
+  return key === 'banner' ? `${ASSET_BASE}/banner.png` : `${ASSET_BASE}/signs/${key}.png`;
+}
+
+async function sendText(text, silent) {
   try {
-    await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, payload);
+    await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
+      chat_id: chatId,
+      text,
+      parse_mode: 'HTML',
+      disable_notification: silent,
+      link_preview_options: { is_disabled: true }
+    });
   } catch (e) {
-    if (withBanner) {
-      // Se il banner dà problemi, il messaggio parte comunque, senza anteprima
-      console.warn('⚠️ Invio con banner fallito, riprovo senza:', e.response?.data || e.message);
-      try {
-        await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
-          ...payload,
-          link_preview_options: { is_disabled: true }
-        });
-        return;
-      } catch (e2) {
-        console.error('❌ Errore sendMessage:', e2.response?.data || e2.message);
-        process.exit(1);
-      }
-    }
     console.error('❌ Errore sendMessage:', e.response?.data || e.message);
     process.exit(1);
   }
 }
 
-async function sendTelegram(messages) {
+// Un post con immagine: foto + didascalia. Se l'immagine non si carica,
+// il testo parte comunque come messaggio normale.
+async function sendPost(post, silent) {
+  if (!post.photo) {
+    await sendText(post.text, silent);
+    return;
+  }
+  try {
+    await axios.post(`https://api.telegram.org/bot${token}/sendPhoto`, {
+      chat_id: chatId,
+      photo: assetUrl(post.photo),
+      caption: post.text,
+      parse_mode: 'HTML',
+      disable_notification: silent
+    });
+  } catch (e) {
+    console.warn(`⚠️ Foto "${post.photo}" non inviata, mando solo il testo:`, e.response?.data || e.message);
+    await sendText(post.text, silent);
+  }
+}
+
+async function sendTelegram(posts) {
   if (DRY_RUN) {
-    messages.forEach((m, i) => {
-      console.log(`\n----- MESSAGGIO ${i + 1}/${messages.length} (${m.length} caratteri) -----\n${m}`);
+    posts.forEach((p, i) => {
+      console.log(`\n----- POST ${i + 1}/${posts.length} [${p.photo || 'testo'}] (${p.text.length} caratteri) -----\n${p.text}`);
     });
     return;
   }
 
   await verifyBot();
 
-  for (let i = 0; i < messages.length; i++) {
-    await sendMessage(messages[i], { withBanner: i === 0, silent: i > 0 });
-    if (i < messages.length - 1) await new Promise(r => setTimeout(r, 500));
+  // Solo il primo post (il banner) suona; gli altri arrivano senza notifica
+  for (let i = 0; i < posts.length; i++) {
+    await sendPost(posts[i], i > 0);
+    if (i < posts.length - 1) await new Promise(r => setTimeout(r, 700));
   }
 }
 
@@ -213,6 +225,23 @@ async function getNavigraphNews() {
   }
 }
 
+// --- Video del canale YouTube @loreair (ultimi 7 giorni) ---
+
+async function getYoutubeVideos() {
+  try {
+    const feed = await parser.parseURL(YOUTUBE_FEED);
+    const videos = feed.items
+      .filter(item => item.link && item.title)
+      .filter(item => !item.isoDate || Date.now() - new Date(item.isoDate).getTime() <= VIDEO_MAX_AGE_MS)
+      .map(item => ({ title: item.title.trim(), link: item.link.trim() }));
+    console.log(`✅ YouTube @loreair: ${videos.length} video della settimana`);
+    return videos;
+  } catch (e) {
+    console.error(`❌ Errore YouTube [HTTP ${e.response?.status || e.statusCode || 'N/A'}]: ${e.message}`);
+    return [];
+  }
+}
+
 // --- Fonte scraping: flightsim.news ---
 
 async function getFlightSimNews() {
@@ -261,6 +290,8 @@ async function getDcsNews() {
         fullUrl && title && title.length > 10 &&
         /^https?:\/\/www\.digitalcombatsimulator\.com\/en\/news\/.+/.test(fullUrl) &&
         !/\/changelog\//.test(fullUrl) &&
+        !/\/newsletters?\/?$/.test(fullUrl) &&
+        !/newsletter/i.test(title) &&
         !/\/news\/$/.test(fullUrl) &&
         !articles.find(a => a.link === fullUrl)
       ) {
@@ -419,8 +450,10 @@ async function main() {
 
   const italianDate = getItalianDate();
 
+  const videos = await getYoutubeVideos();
+
   if (newArticles.length === 0) {
-    await sendTelegram(buildMessages([], italianDate));
+    await sendTelegram(buildPosts([], videos, italianDate));
     console.log('✅ Messaggio inviato (nessuna news nuova trovata)');
     return;
   }
@@ -428,7 +461,7 @@ async function main() {
   const analyses = await Promise.all(newArticles.map(analyzeArticle));
   const items = newArticles.map((a, i) => toItem(a, analyses[i]));
 
-  await sendTelegram(buildMessages(items, italianDate));
+  await sendTelegram(buildPosts(items, videos, italianDate));
   console.log(`✅ Inviati ${newArticles.length} articoli su Telegram!`);
 
   if (DRY_RUN || TEST_MODE) {

@@ -160,7 +160,7 @@ async function analyzeArticle(article) {
 Rispondi SOLO con un oggetto JSON con questi campi:
 - "title": titolo breve in italiano, massimo 9 parole; mantieni invariati nomi di prodotti, sviluppatori e sigle (es. iniBuilds, A350, MSFS 2024)
 - "summary": una sola frase breve in italiano, massimo 110 caratteri, senza emoji
-- "category": una tra "aerei", "aeroporti", "scenari", "simulatore", "dcs", "navigraph", "altro" (simulatore = aggiornamenti del simulatore stesso come Sim Update o World Update; navigraph = dati AIRAC e novità dei programmi Navigraph; dcs = qualsiasi novità di DCS World)
+- "category": una tra "aerei", "aeroporti", "scenari", "simulatore", "moduli", "navigraph", "altro" (aerei = aeroplani ed elicotteri per MSFS o X-Plane; aeroporti = aeroporti e piste; scenari = paesaggi, città, mappe; simulatore = aggiornamenti del simulatore stesso come Sim Update o World Update; moduli = per DCS World, aerei e altri moduli giocabili; per DCS World usa "scenari" per mappe e terreni; navigraph = dati AIRAC e novità dei programmi Navigraph)
 - "sim": uno tra "msfs", "xplane", "dcs", "navigraph", "altro"
 
 Titolo: ${article.title}\nURL: ${article.link}`

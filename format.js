@@ -10,29 +10,35 @@
 const CAPTION_MAX = 1000;
 const TEXT_MAX = 4000;
 
-// Rubriche per simulatore, nell'ordine in cui compaiono. Quelle vuote vengono saltate.
-const SECTIONS = [
-  { key: 'loreair',   sign: 'loreair' },
-  { key: 'dcs',       sign: 'dcs' },
-  { key: 'msfs',      sign: 'msfs',      subheadings: true },
-  { key: 'xplane',    sign: 'xplane',    subheadings: true },
-  { key: 'navigraph', sign: 'navigraph' },
-  { key: 'altro',     sign: 'altro' }
+// Cartelli gialli, nell'ordine in cui compaiono. Ogni cartello raccoglie le notizie
+// di un simulatore e di una categoria (scritta sul cartello); quelli vuoti si saltano.
+// "category: null" = tutte le notizie di quel simulatore.
+const MSFS_XPLANE_CATEGORIES = ['aerei', 'aeroporti', 'scenari', 'simulatore', 'altro'];
+const BLOCKS = [
+  { sim: 'loreair', category: null, sign: 'loreair' },
+  { sim: 'dcs', category: 'moduli', sign: 'dcs-moduli' },
+  { sim: 'dcs', category: 'scenari', sign: 'dcs-scenari' },
+  { sim: 'dcs', category: 'altro', sign: 'dcs' },
+  ...MSFS_XPLANE_CATEGORIES.map(c => ({ sim: 'msfs', category: c, sign: `msfs-${c}` })),
+  ...MSFS_XPLANE_CATEGORIES.map(c => ({ sim: 'xplane', category: c, sign: `xplane-${c}` })),
+  { sim: 'navigraph', category: null, sign: 'navigraph' },
+  { sim: 'altro', category: null, sign: 'altro' }
 ];
 
-// Sottotitoli dentro le rubriche MSFS e X-Plane
-const SUBHEADINGS = [
-  { key: 'aerei',      label: '✈️ Aerei' },
-  { key: 'aeroporti',  label: '🛬 Aeroporti' },
-  { key: 'scenari',    label: '🏝 Scenari' },
-  { key: 'simulatore', label: '🛠 Simulatore' },
-  { key: 'altro',      label: '📰 Altro' }
-];
-
-const CATEGORY_KEYS = ['aerei', 'aeroporti', 'scenari', 'simulatore', 'dcs', 'navigraph', 'altro'];
+const CATEGORY_KEYS = ['aerei', 'aeroporti', 'scenari', 'simulatore', 'moduli', 'dcs', 'navigraph', 'altro'];
 const SIM_KEYS = ['msfs', 'xplane', 'dcs', 'navigraph', 'altro'];
 
-const BOT_LINE = '🤖 <i>Post automatico del bot</i>';
+// In quale cartello finisce una notizia: la categoria "grezza" viene ricondotta
+// a quelle che il cartello del suo simulatore sa mostrare.
+function blockCategory(item) {
+  if (item.sim === 'dcs') return ['moduli', 'scenari'].includes(item.category) ? item.category : 'altro';
+  if (item.sim === 'msfs' || item.sim === 'xplane') {
+    return MSFS_XPLANE_CATEGORIES.includes(item.category) ? item.category : 'altro';
+  }
+  return null;
+}
+
+const BOT_LINE = '<i>Post automatico del bot</i>';
 const SIGNATURE = 'Happy Landings\n<b>I-LAIR</b>';
 
 function esc(text) {
@@ -70,6 +76,13 @@ function guessCategory(article) {
   return 'altro';
 }
 
+function guessDcsKind(title) {
+  const t = title || '';
+  if (/\bmaps?\b|terrain|scenery|dev report|south iraq/i.test(t)) return 'scenari';
+  if (/\bmig-?\d+|\bf-\d+|\bf\/a-\d+|\ba-10|\bsu-\d+|\bah-\d+|\bjf-17|\bmirage|module|flogger|tomcat|hornet|viper|helicopter|early access/i.test(t)) return 'moduli';
+  return 'altro';
+}
+
 function pick(value, allowed, fallback) {
   return allowed.includes(value) ? value : fallback;
 }
@@ -80,8 +93,12 @@ function toItem(article, ai) {
   const forced = /navigraph|airac/i.test(article.title) ? 'navigraph'
     : (article.source === 'DCS Official' ? 'dcs' : null);
 
-  const category = forced || pick(ai && ai.category, CATEGORY_KEYS, guessCategory(article));
   const sim = forced || pick(ai && ai.sim, SIM_KEYS, guessSim(article));
+  // Le notizie DCS si dividono in "moduli" (aerei e altro materiale giocabile) e "scenari" (mappe)
+  const category = forced === 'navigraph' ? 'navigraph'
+    : (sim === 'dcs'
+      ? pick(ai && ai.category, ['moduli', 'scenari'], guessDcsKind(article.title))
+      : pick(ai && ai.category, CATEGORY_KEYS, guessCategory(article)));
 
   return {
     category,
@@ -103,32 +120,14 @@ function renderVideo(video) {
   return `▶️ <a href="${escAttr(video.link)}">${esc(video.title)}</a>`;
 }
 
-// Costruisce le "righe" di una rubrica. Ogni riga è un pezzo di testo che non va spezzato.
-function sectionLines(section, items, videos, counter) {
-  if (section.key === 'loreair') {
+// Righe di un cartello. Ogni riga è un pezzo di testo che non va spezzato.
+function blockLines(block, items, videos, counter) {
+  if (block.sim === 'loreair') {
     return ['<b>🎬 I video della settimana</b>', ...videos.map(renderVideo)];
   }
-
-  const ofSim = items.filter(i => i.sim === section.key);
-  if (!section.subheadings) {
-    return ofSim.map(i => renderItem(i, counter.next++));
-  }
-
-  const lines = [];
-  for (const sub of SUBHEADINGS) {
-    const inSub = ofSim.filter(i => i.category === sub.key);
-    if (inSub.length === 0) continue;
-    lines.push(`<b>${sub.label}</b>`);
-    inSub.forEach(i => lines.push(renderItem(i, counter.next++)));
-  }
-  // Notizie con una categoria fuori elenco (es. "dcs" su MSFS): vanno in fondo
-  const known = new Set(SUBHEADINGS.map(s => s.key));
-  const rest = ofSim.filter(i => !known.has(i.category));
-  if (rest.length) {
-    lines.push(`<b>${SUBHEADINGS[SUBHEADINGS.length - 1].label}</b>`);
-    rest.forEach(i => lines.push(renderItem(i, counter.next++)));
-  }
-  return lines;
+  return items
+    .filter(i => i.sim === block.sim && (block.category === null || blockCategory(i) === block.category))
+    .map(i => renderItem(i, counter.next++));
 }
 
 // Quante righe stanno in una didascalia: il resto prosegue in messaggi di testo.
@@ -157,7 +156,7 @@ function footerBlock() {
 // items: notizie già classificate; videos: [{title, link}]
 // Ritorna post: {photo: 'banner'|chiave cartello, text} oppure {text}
 function buildPosts(items, videos, dateLabel) {
-  const header = [`🤖 <b>FLIGHTSIM NEWS · WEEKLY</b>`];
+  const header = ['<b>FLIGHTSIM NEWS · WEEKLY</b>'];
   const counts = [];
   if (items.length) counts.push(`${items.length} novità`);
   if (videos.length) counts.push(`${videos.length} video`);
@@ -176,13 +175,13 @@ function buildPosts(items, videos, dateLabel) {
   posts.push({ photo: 'banner', text: header.join('\n') });
 
   const counter = { next: 1 };
-  for (const section of SECTIONS) {
-    const lines = sectionLines(section, items, videos, counter);
+  for (const block of BLOCKS) {
+    const lines = blockLines(block, items, videos, counter);
     if (lines.length === 0) continue;
 
     const chunks = splitLines(lines, CAPTION_MAX, TEXT_MAX);
     chunks.forEach((chunk, idx) => {
-      posts.push(idx === 0 ? { photo: section.sign, text: chunk } : { text: chunk });
+      posts.push(idx === 0 ? { photo: block.sign, text: chunk } : { text: chunk });
     });
   }
 

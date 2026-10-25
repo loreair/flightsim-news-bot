@@ -17,6 +17,10 @@ on:
         description: 'Reinvia anche le notizie già pubblicate (poi la cache viene aggiornata). Di solito lasciare spento'
         type: boolean
         default: false
+      solo_cache:
+        description: 'Solo cache: segna le notizie di oggi come già inviate SENZA scrivere su Telegram (con Prova spenta). Di solito lasciare spento'
+        type: boolean
+        default: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -75,6 +79,7 @@ jobs:
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         PROVA: ${{ inputs.prova && '1' || '0' }}
         IGNORA_CACHE: ${{ inputs.ignora_cache && '1' || '0' }}
+        SOLO_CACHE: ${{ inputs.solo_cache && '1' || '0' }}
       run: node bot.js
 
     - name: Salva cache sent_links nel repo
@@ -85,4 +90,6 @@ jobs:
         git add sent_links.json
         git diff --cached --quiet && echo "Nessuna modifica alla cache, skip commit." && exit 0
         git commit -m "chore: update sent_links cache [skip ci]"
+        # Se nel frattempo il ramo è cambiato (il bot gira ~7 minuti), si riallinea prima di salvare
+        git pull --rebase origin main
         git push origin main

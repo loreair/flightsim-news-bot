@@ -10,9 +10,9 @@ on:
   workflow_dispatch:
     inputs:
       prova:
-        description: 'Prova: invia al canale di prova (secret TEST_*) e non salva la cache'
+        description: 'Prova (attiva di default): invia al canale di prova (secret TEST_*) e non salva la cache. Togli la spunta SOLO per scrivere sul canale vero'
         type: boolean
-        default: false
+        default: true
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true

@@ -14,6 +14,10 @@ const anthropicKey = process.env.ANTHROPIC_API_KEY;
 // a Telegram e senza toccare sent_links.json. Utile per provare il layout.
 const DRY_RUN = process.env.DRY_RUN === '1';
 
+// PROVA=1 (impostato dal workflow nei lanci di prova): ignora la cache dei link
+// già inviati e non la aggiorna.
+const TEST_MODE = process.env.PROVA === '1';
+
 if (!DRY_RUN && (!token || !chatId)) {
   console.error('❌ TELEGRAM_TOKEN o TELEGRAM_CHAT_ID mancanti!');
   process.exit(1);
@@ -406,7 +410,11 @@ async function main() {
   );
 
   const allArticles = await getNews();
-  const newArticles = allArticles.filter(a => !sentLinks.has(normalizeUrl(a.link)));
+  // In prova (PROVA=1) si ignora la cache: così il canale di prova mostra sempre
+  // il layout completo, anche se le notizie sono già uscite sul canale vero.
+  const newArticles = TEST_MODE
+    ? allArticles
+    : allArticles.filter(a => !sentLinks.has(normalizeUrl(a.link)));
   console.log(`📰 Trovati ${allArticles.length} articoli totali, ${newArticles.length} nuovi (non ancora inviati).`);
 
   const italianDate = getItalianDate();
@@ -423,8 +431,8 @@ async function main() {
   await sendTelegram(buildMessages(items, italianDate));
   console.log(`✅ Inviati ${newArticles.length} articoli su Telegram!`);
 
-  if (DRY_RUN) {
-    console.log('🧪 DRY_RUN: sent_links.json non aggiornato.');
+  if (DRY_RUN || TEST_MODE) {
+    console.log('🧪 Prova: sent_links.json non aggiornato.');
     return;
   }
   newArticles.forEach(a => sentLinks.add(normalizeUrl(a.link)));

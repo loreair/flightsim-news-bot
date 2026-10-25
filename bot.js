@@ -17,6 +17,7 @@ const DRY_RUN = process.env.DRY_RUN === '1';
 // PROVA=1 (impostato dal workflow nei lanci di prova): ignora la cache dei link
 // già inviati e non la aggiorna.
 const TEST_MODE = process.env.PROVA === '1';
+const IGNORE_CACHE = process.env.IGNORA_CACHE === '1';
 
 if (!DRY_RUN && (!token || !chatId)) {
   console.error('❌ TELEGRAM_TOKEN o TELEGRAM_CHAT_ID mancanti!');
@@ -449,7 +450,8 @@ async function main() {
   const allArticles = await getNews();
   // In prova (PROVA=1) si ignora la cache: così il canale di prova mostra sempre
   // il layout completo, anche se le notizie sono già uscite sul canale vero.
-  const newArticles = TEST_MODE
+  // IGNORA_CACHE=1 (solo lancio manuale): riinvia anche le notizie già uscite, poi aggiorna la cache.
+  const newArticles = (TEST_MODE || IGNORE_CACHE)
     ? allArticles
     : allArticles.filter(a => !sentLinks.has(normalizeUrl(a.link)));
   console.log(`📰 Trovati ${allArticles.length} articoli totali, ${newArticles.length} nuovi (non ancora inviati).`);

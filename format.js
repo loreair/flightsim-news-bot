@@ -11,21 +11,18 @@ const CAPTION_MAX = 1000;
 const TEXT_MAX = 4000;
 
 // Cartelli gialli, nell'ordine in cui compaiono. Ogni cartello raccoglie le notizie
-// di un simulatore; quelli vuoti si saltano.
-// "categories: null" = nessun sottotitolo, tutte le notizie di fila.
+// di un simulatore e di una categoria (scritta sul cartello); quelli vuoti si saltano.
+// "category: null" = tutte le notizie di quel simulatore.
 const MSFS_XPLANE_CATEGORIES = ['aerei', 'aeroporti', 'scenari', 'simulatore', 'altro'];
-const CATEGORY_LABELS = {
-  moduli: 'MODULI', scenari: 'SCENARI', aerei: 'AEREI', aeroporti: 'AEROPORTI',
-  simulatore: 'SIMULATORE', altro: 'ALTRO'
-};
-// Un messaggio per simulatore: banner con il logo e, sotto, le categorie come sottotitoli.
 const BLOCKS = [
-  { sim: 'loreair', categories: null, sign: 'loreair' },
-  { sim: 'dcs', categories: ['moduli', 'scenari', 'altro'], sign: 'dcs' },
-  { sim: 'msfs', categories: MSFS_XPLANE_CATEGORIES, sign: 'msfs' },
-  { sim: 'xplane', categories: MSFS_XPLANE_CATEGORIES, sign: 'xplane' },
-  { sim: 'navigraph', categories: null, sign: 'navigraph' },
-  { sim: 'altro', categories: null, sign: 'altro' }
+  { sim: 'loreair', category: null, sign: 'loreair' },
+  { sim: 'dcs', category: 'moduli', sign: 'dcs-moduli' },
+  { sim: 'dcs', category: 'scenari', sign: 'dcs-scenari' },
+  { sim: 'dcs', category: 'altro', sign: 'dcs' },
+  ...MSFS_XPLANE_CATEGORIES.map(c => ({ sim: 'msfs', category: c, sign: `msfs-${c}` })),
+  ...MSFS_XPLANE_CATEGORIES.map(c => ({ sim: 'xplane', category: c, sign: `xplane-${c}` })),
+  { sim: 'navigraph', category: null, sign: 'navigraph' },
+  { sim: 'altro', category: null, sign: 'altro' }
 ];
 
 const CATEGORY_KEYS = ['aerei', 'aeroporti', 'scenari', 'simulatore', 'moduli', 'dcs', 'navigraph', 'altro'];
@@ -128,31 +125,9 @@ function blockLines(block, items, videos, counter) {
   if (block.sim === 'loreair') {
     return ['<b>🎬 I video della settimana</b>', ...videos.map(renderVideo)];
   }
-  const own = items.filter(i => i.sim === block.sim);
-  if (!block.categories) return own.map(i => renderItem(i, counter.next++));
-
-  const lines = [];
-  for (const category of block.categories) {
-    const rendered = own
-      .filter(i => blockCategory(i) === category)
-      .map(i => renderItem(i, counter.next++));
-    if (rendered.length === 0) continue;
-    // Il sottotitolo non va mai separato dalla prima notizia
-    rendered[0] = `<b>${CATEGORY_LABELS[category]}</b>\n${rendered[0]}`;
-    lines.push(...rendered);
-  }
-  return lines;
-}
-
-// Banner di un messaggio: per i simulatori con categorie, uno per ogni categoria presente
-// (DCS "altro" non ha una scritta propria e usa il banner semplice).
-function blockSigns(block, items) {
-  if (!block.categories) return [block.sign];
-  const present = new Set(items.filter(i => i.sim === block.sim).map(blockCategory));
-  const signs = block.categories
-    .filter(c => present.has(c))
-    .map(c => (block.sim === 'dcs' && c === 'altro' ? 'dcs' : `${block.sim}-${c}`));
-  return signs.length ? signs : [block.sign];
+  return items
+    .filter(i => i.sim === block.sim && (block.category === null || blockCategory(i) === block.category))
+    .map(i => renderItem(i, counter.next++));
 }
 
 // Quante righe stanno in una didascalia: il resto prosegue in messaggi di testo.
@@ -204,24 +179,15 @@ function buildPosts(items, videos, dateLabel) {
     const lines = blockLines(block, items, videos, counter);
     if (lines.length === 0) continue;
 
-    // Più banner (uno per categoria) formano un album; uno solo è una foto semplice
-    const signs = blockSigns(block, items);
-    const photoPart = signs.length > 1 ? { photos: signs } : { photo: signs[0] };
-
-    // Se il testo entra nella didascalia sta sotto le foto; altrimenti le foto vanno
-    // da sole e tutto il testo segue in un messaggio (o più, se serve).
-    const whole = lines.join('\n');
-    if (whole.length <= CAPTION_MAX) {
-      posts.push({ ...photoPart, text: whole });
-    } else {
-      posts.push({ ...photoPart, text: '' });
-      splitLines(lines, TEXT_MAX, TEXT_MAX).forEach(chunk => posts.push({ text: chunk }));
-    }
+    const chunks = splitLines(lines, CAPTION_MAX, TEXT_MAX);
+    chunks.forEach((chunk, idx) => {
+      posts.push(idx === 0 ? { photo: block.sign, text: chunk } : { text: chunk });
+    });
   }
 
   // La chiusura sta nell'ultimo post, se entra; altrimenti in un messaggio a parte
   const last = posts[posts.length - 1];
-  const limit = (last.photo || last.photos) ? CAPTION_MAX : TEXT_MAX;
+  const limit = last.photo ? CAPTION_MAX : TEXT_MAX;
   if (posts.length > 1 && `${last.text}\n\n${footerBlock()}`.length <= limit) {
     last.text = `${last.text}\n\n${footerBlock()}`;
   } else {

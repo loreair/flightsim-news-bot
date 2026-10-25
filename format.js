@@ -144,6 +144,17 @@ function blockLines(block, items, videos, counter) {
   return lines;
 }
 
+// Banner di un messaggio: per i simulatori con categorie, uno per ogni categoria presente
+// (DCS "altro" non ha una scritta propria e usa il banner semplice).
+function blockSigns(block, items) {
+  if (!block.categories) return [block.sign];
+  const present = new Set(items.filter(i => i.sim === block.sim).map(blockCategory));
+  const signs = block.categories
+    .filter(c => present.has(c))
+    .map(c => (block.sim === 'dcs' && c === 'altro' ? 'dcs' : `${block.sim}-${c}`));
+  return signs.length ? signs : [block.sign];
+}
+
 // Quante righe stanno in una didascalia: il resto prosegue in messaggi di testo.
 function splitLines(lines, firstMax, nextMax) {
   const chunks = [];
@@ -193,15 +204,24 @@ function buildPosts(items, videos, dateLabel) {
     const lines = blockLines(block, items, videos, counter);
     if (lines.length === 0) continue;
 
-    const chunks = splitLines(lines, CAPTION_MAX, TEXT_MAX);
-    chunks.forEach((chunk, idx) => {
-      posts.push(idx === 0 ? { photo: block.sign, text: chunk } : { text: chunk });
-    });
+    // Più banner (uno per categoria) formano un album; uno solo è una foto semplice
+    const signs = blockSigns(block, items);
+    const photoPart = signs.length > 1 ? { photos: signs } : { photo: signs[0] };
+
+    // Se il testo entra nella didascalia sta sotto le foto; altrimenti le foto vanno
+    // da sole e tutto il testo segue in un messaggio (o più, se serve).
+    const whole = lines.join('\n');
+    if (whole.length <= CAPTION_MAX) {
+      posts.push({ ...photoPart, text: whole });
+    } else {
+      posts.push({ ...photoPart, text: '' });
+      splitLines(lines, TEXT_MAX, TEXT_MAX).forEach(chunk => posts.push({ text: chunk }));
+    }
   }
 
   // La chiusura sta nell'ultimo post, se entra; altrimenti in un messaggio a parte
   const last = posts[posts.length - 1];
-  const limit = last.photo ? CAPTION_MAX : TEXT_MAX;
+  const limit = (last.photo || last.photos) ? CAPTION_MAX : TEXT_MAX;
   if (posts.length > 1 && `${last.text}\n\n${footerBlock()}`.length <= limit) {
     last.text = `${last.text}\n\n${footerBlock()}`;
   } else {

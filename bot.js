@@ -116,29 +116,42 @@ async function sendText(text, silent) {
 
 // Un post con immagine: foto + didascalia. Se l'immagine non si carica,
 // il testo parte comunque come messaggio normale.
+// Più foto (post.photos) partono come album; la didascalia, se c'è, sta sulla prima.
 async function sendPost(post, silent) {
-  if (!post.photo) {
+  if (!post.photo && !post.photos) {
     await sendText(post.text, silent);
     return;
   }
   try {
-    await axios.post(`https://api.telegram.org/bot${token}/sendPhoto`, {
-      chat_id: chatId,
-      photo: assetUrl(post.photo),
-      caption: post.text,
-      parse_mode: 'HTML',
-      disable_notification: silent
-    });
+    const caption = post.text ? { caption: post.text, parse_mode: 'HTML' } : {};
+    if (post.photos) {
+      await axios.post(`https://api.telegram.org/bot${token}/sendMediaGroup`, {
+        chat_id: chatId,
+        media: post.photos.map((key, i) => ({
+          type: 'photo',
+          media: assetUrl(key),
+          ...(i === 0 ? caption : {})
+        })),
+        disable_notification: silent
+      });
+    } else {
+      await axios.post(`https://api.telegram.org/bot${token}/sendPhoto`, {
+        chat_id: chatId,
+        photo: assetUrl(post.photo),
+        ...caption,
+        disable_notification: silent
+      });
+    }
   } catch (e) {
-    console.warn(`⚠️ Foto "${post.photo}" non inviata, mando solo il testo:`, e.response?.data || e.message);
-    await sendText(post.text, silent);
+    console.warn(`⚠️ Foto non inviate (${post.photo || post.photos.join(', ')}), mando solo il testo:`, e.response?.data || e.message);
+    if (post.text) await sendText(post.text, silent);
   }
 }
 
 async function sendTelegram(posts) {
   if (DRY_RUN) {
     posts.forEach((p, i) => {
-      console.log(`\n----- POST ${i + 1}/${posts.length} [${p.photo || 'testo'}] (${p.text.length} caratteri) -----\n${p.text}`);
+      console.log(`\n----- POST ${i + 1}/${posts.length} [${p.photo || (p.photos && p.photos.join('+')) || 'testo'}] (${p.text.length} caratteri) -----\n${p.text}`);
     });
     return;
   }

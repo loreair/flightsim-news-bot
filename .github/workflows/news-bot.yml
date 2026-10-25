@@ -8,6 +8,11 @@ on:
     - cron: '0 5 * * 6'
     - cron: '0 6 * * 6'
   workflow_dispatch:
+    inputs:
+      prova:
+        description: 'Prova: invia al canale di prova (secret TEST_*) e non salva la cache'
+        type: boolean
+        default: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -45,16 +50,29 @@ jobs:
       if: steps.gate.outputs.run == 'true'
       run: npm install cheerio axios rss-parser @anthropic-ai/sdk
 
+    # In modalità prova il bot non deve MAI ricadere sul canale vero: se i secret di prova
+    # mancano, il run si ferma qui.
+    - name: Controllo secret di prova
+      if: steps.gate.outputs.run == 'true' && inputs.prova
+      env:
+        TEST_TOKEN: ${{ secrets.TEST_TELEGRAM_TOKEN }}
+        TEST_CHAT: ${{ secrets.TEST_TELEGRAM_CHAT_ID }}
+      run: |
+        if [ -z "$TEST_TOKEN" ] || [ -z "$TEST_CHAT" ]; then
+          echo "Mancano TEST_TELEGRAM_TOKEN o TEST_TELEGRAM_CHAT_ID: prova annullata per non scrivere sul canale vero."
+          exit 1
+        fi
+
     - name: Run bot
       if: steps.gate.outputs.run == 'true'
       env:
-        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        TELEGRAM_TOKEN: ${{ inputs.prova && secrets.TEST_TELEGRAM_TOKEN || secrets.TELEGRAM_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ inputs.prova && secrets.TEST_TELEGRAM_CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       run: node bot.js
 
     - name: Salva cache sent_links nel repo
-      if: steps.gate.outputs.run == 'true'
+      if: steps.gate.outputs.run == 'true' && !inputs.prova
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"

@@ -209,7 +209,8 @@ async function getRssFeed(url, sourceName, limit = 3) {
 // e solo gli ultimi 14 giorni, per non rispolverare notizie vecchie.
 
 async function getNavigraphNews() {
-  const MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+  // Un ciclo AIRAC dura 28 giorni: con una finestra più corta ci sono settimane senza nessuna notizia
+  const MAX_AGE_MS = 28 * 24 * 60 * 60 * 1000;
   try {
     const feed = await parser.parseURL('https://www.simflight.com/?s=navigraph&feed=rss2');
     const items = feed.items

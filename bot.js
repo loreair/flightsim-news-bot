@@ -89,8 +89,13 @@ async function verifyBot() {
   }
 }
 
+// Telegram memorizza le immagini già scaricate da un indirizzo: cambiando ASSET_VERSION
+// quando si aggiornano i banner, vengono scaricati di nuovo.
+const ASSET_VERSION = '3';
+
 function assetUrl(key) {
-  return key === 'banner' ? `${ASSET_BASE}/banner.png` : `${ASSET_BASE}/signs/${key}.png`;
+  const path = key === 'banner' ? 'banner.png' : `signs/${key}.png`;
+  return `${ASSET_BASE}/${path}?v=${ASSET_VERSION}`;
 }
 
 async function sendText(text, silent) {

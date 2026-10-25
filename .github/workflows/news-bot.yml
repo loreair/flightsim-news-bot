@@ -69,6 +69,7 @@ jobs:
         TELEGRAM_TOKEN: ${{ inputs.prova && secrets.TEST_TELEGRAM_TOKEN || secrets.TELEGRAM_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ inputs.prova && secrets.TEST_TELEGRAM_CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        PROVA: ${{ inputs.prova && '1' || '0' }}
       run: node bot.js
 
     - name: Salva cache sent_links nel repo

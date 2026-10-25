@@ -11,18 +11,21 @@ const CAPTION_MAX = 1000;
 const TEXT_MAX = 4000;
 
 // Cartelli gialli, nell'ordine in cui compaiono. Ogni cartello raccoglie le notizie
-// di un simulatore e di una categoria (scritta sul cartello); quelli vuoti si saltano.
-// "category: null" = tutte le notizie di quel simulatore.
+// di un simulatore; quelli vuoti si saltano.
+// "categories: null" = nessun sottotitolo, tutte le notizie di fila.
 const MSFS_XPLANE_CATEGORIES = ['aerei', 'aeroporti', 'scenari', 'simulatore', 'altro'];
+const CATEGORY_LABELS = {
+  moduli: 'MODULI', scenari: 'SCENARI', aerei: 'AEREI', aeroporti: 'AEROPORTI',
+  simulatore: 'SIMULATORE', altro: 'ALTRO'
+};
+// Un messaggio per simulatore: banner con il logo e, sotto, le categorie come sottotitoli.
 const BLOCKS = [
-  { sim: 'loreair', category: null, sign: 'loreair' },
-  { sim: 'dcs', category: 'moduli', sign: 'dcs-moduli' },
-  { sim: 'dcs', category: 'scenari', sign: 'dcs-scenari' },
-  { sim: 'dcs', category: 'altro', sign: 'dcs' },
-  ...MSFS_XPLANE_CATEGORIES.map(c => ({ sim: 'msfs', category: c, sign: `msfs-${c}` })),
-  ...MSFS_XPLANE_CATEGORIES.map(c => ({ sim: 'xplane', category: c, sign: `xplane-${c}` })),
-  { sim: 'navigraph', category: null, sign: 'navigraph' },
-  { sim: 'altro', category: null, sign: 'altro' }
+  { sim: 'loreair', categories: null, sign: 'loreair' },
+  { sim: 'dcs', categories: ['moduli', 'scenari', 'altro'], sign: 'dcs' },
+  { sim: 'msfs', categories: MSFS_XPLANE_CATEGORIES, sign: 'msfs' },
+  { sim: 'xplane', categories: MSFS_XPLANE_CATEGORIES, sign: 'xplane' },
+  { sim: 'navigraph', categories: null, sign: 'navigraph' },
+  { sim: 'altro', categories: null, sign: 'altro' }
 ];
 
 const CATEGORY_KEYS = ['aerei', 'aeroporti', 'scenari', 'simulatore', 'moduli', 'dcs', 'navigraph', 'altro'];
@@ -125,9 +128,20 @@ function blockLines(block, items, videos, counter) {
   if (block.sim === 'loreair') {
     return ['<b>🎬 I video della settimana</b>', ...videos.map(renderVideo)];
   }
-  return items
-    .filter(i => i.sim === block.sim && (block.category === null || blockCategory(i) === block.category))
-    .map(i => renderItem(i, counter.next++));
+  const own = items.filter(i => i.sim === block.sim);
+  if (!block.categories) return own.map(i => renderItem(i, counter.next++));
+
+  const lines = [];
+  for (const category of block.categories) {
+    const rendered = own
+      .filter(i => blockCategory(i) === category)
+      .map(i => renderItem(i, counter.next++));
+    if (rendered.length === 0) continue;
+    // Il sottotitolo non va mai separato dalla prima notizia
+    rendered[0] = `<b>${CATEGORY_LABELS[category]}</b>\n${rendered[0]}`;
+    lines.push(...rendered);
+  }
+  return lines;
 }
 
 // Quante righe stanno in una didascalia: il resto prosegue in messaggi di testo.

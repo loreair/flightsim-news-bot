@@ -18,6 +18,10 @@ const DRY_RUN = process.env.DRY_RUN === '1';
 // già inviati e non la aggiorna.
 const TEST_MODE = process.env.PROVA === '1';
 const IGNORE_CACHE = process.env.IGNORA_CACHE === '1';
+// SOLO_CACHE=1 (solo lancio manuale): segna come già inviate le notizie di oggi
+// senza mandare nulla su Telegram. Serve a rimettere a posto la cache dopo un invio
+// il cui salvataggio non è riuscito.
+const SOLO_CACHE = process.env.SOLO_CACHE === '1';
 
 if (!DRY_RUN && (!token || !chatId)) {
   console.error('❌ TELEGRAM_TOKEN o TELEGRAM_CHAT_ID mancanti!');
@@ -455,6 +459,13 @@ async function main() {
     ? allArticles
     : allArticles.filter(a => !sentLinks.has(normalizeUrl(a.link)));
   console.log(`📰 Trovati ${allArticles.length} articoli totali, ${newArticles.length} nuovi (non ancora inviati).`);
+
+  if (SOLO_CACHE && !TEST_MODE) {
+    allArticles.forEach(a => sentLinks.add(normalizeUrl(a.link)));
+    saveSentLinks(sentLinks);
+    console.log(`🧾 Solo cache: ${allArticles.length} link segnati come inviati, nessun messaggio mandato.`);
+    return;
+  }
 
   const italianDate = getItalianDate();
 
